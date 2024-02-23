@@ -85,7 +85,7 @@ try:
     #NIFC NIFS URLS. These may change so please manually update these as needed.
     RDA_FirePerimeterHistURL = "https://opendata.arcgis.com/api/v3/datasets/e02b85c0ea784ce7bd8add7ae3d293d0_0/downloads/data?format=shp&spatialRefId=4326&where=1%3D1" #This URL is for the Wildland Fire Management Research, Development, and Application team's Interagency fire perimeter historical dataset
     nifc_pbl_fullhistory_url = "https://opendata.arcgis.com/api/v3/datasets/5e72b1699bf74eefb3f3aff6f4ba5511_0/downloads/data?format=fgdb&spatialRefId=4326&where=1%3D1"   #the URL address of the Historic WFIGS Wildland Fire Perims
-    nifc_pbl_YTD_url = "https://opendata.arcgis.com/api/v3/datasets/7c81ab78d8464e5c9771e49b64e834e9_0/downloads/data?format=fgdb&spatialRefId=4326"   #the URL address of the 2023 To Date WFIGS Wildland Fire Perims
+    nifc_pbl_YTD_url = "https://opendata.arcgis.com/api/v3/datasets/7c81ab78d8464e5c9771e49b64e834e9_0/downloads/data?format=fgdb&spatialRefId=4326"   #the URL address of the 2024 To Date WFIGS Wildland Fire Perims
 
     #Output Names - Conditionally Set
     #If user wants to use their own dataset these are the variables it will use
@@ -120,20 +120,20 @@ try:
             final_arch_fc_nm = "NIFC_WFIGS_FullHistory_CY"+FireYear+"_QAQC_"+datetime
         if FireYear == None:
             final_arch_fc_nm = "NIFC_WFIGS_FullHistory_QAQC_"+datetime
-    #If user wants to use the NIFC 2023 YTD dataset these are the variables it will use
-    if DownloadSelection == "2023 Wildland Fire Perimeters (WFIGS) to Date":
-        rawdata = (os.path.join(rawdatastoragegdb,"Raw_WFIGS2023_ToDate_"+datetime))
-        All_Dups_Datetime= "NIFC_WFIGS_2023ToDate_AllDupls_"+datetime+"_"+str(Identicalshapetolerance)+"MetersXYTolerance"
-        DuplicatedAcreageTable = "NIFC_WFIGS_2023ToDate_Dupl_Acrg_"+datetime+"_"+str(Identicalshapetolerance)+"MetersXYTolerance"
-        DuplicatedAcreage = "NIFC_WFIGS_2023ToDate_TotalDuplAcreage_"+datetime+"_"+str(Identicalshapetolerance)+"MetersXYTolerance"
-        UserDupsStats = "NIFC_WFIGS_2023ToDate_Intersect_DuplAcreage_"+datetime+"_"+str(Identicalshapetolerance)+"MetersXYTolerance"
-        UserDups = "NIFC_WFIGS_2023ToDate_Intersect_Dups_"+datetime+"_"+str(Identicalshapetolerance)+"MetersXYTolerance"
-        InvldNameOutput = "NIFC_WFIGS_2023ToDate_InvalidName_"+datetime
-        IRWIN_ID_Field_Dups = "NIFC_WFIGS_2023ToDate_IRWINID_Duplicates_"+datetime
-        PreDissAcreageTable = "NIFC_WFIGS_2023ToDate_TtlAcrg_"+datetime
+    #If user wants to use the NIFC 2024 YTD dataset these are the variables it will use
+    if DownloadSelection == "2024 Wildland Fire Perimeters (WFIGS) to Date":
+        rawdata = (os.path.join(rawdatastoragegdb,"Raw_WFIGS2024_ToDate_"+datetime))
+        All_Dups_Datetime= "NIFC_WFIGS_2024ToDate_AllDupls_"+datetime+"_"+str(Identicalshapetolerance)+"MetersXYTolerance"
+        DuplicatedAcreageTable = "NIFC_WFIGS_2024ToDate_Dupl_Acrg_"+datetime+"_"+str(Identicalshapetolerance)+"MetersXYTolerance"
+        DuplicatedAcreage = "NIFC_WFIGS_2024ToDate_TotalDuplAcreage_"+datetime+"_"+str(Identicalshapetolerance)+"MetersXYTolerance"
+        UserDupsStats = "NIFC_WFIGS_2024ToDate_Intersect_DuplAcreage_"+datetime+"_"+str(Identicalshapetolerance)+"MetersXYTolerance"
+        UserDups = "NIFC_WFIGS_2024ToDate_Intersect_Dups_"+datetime+"_"+str(Identicalshapetolerance)+"MetersXYTolerance"
+        InvldNameOutput = "NIFC_WFIGS_2024ToDate_InvalidName_"+datetime
+        IRWIN_ID_Field_Dups = "NIFC_WFIGS_2024ToDate_IRWINID_Duplicates_"+datetime
+        PreDissAcreageTable = "NIFC_WFIGS_2024ToDate_TtlAcrg_"+datetime
         if VtxCntTrigger == "true":
-            vtxoutput = "NIFC_WFIGS_2023ToDate_VerticiesCountOutput_"+datetime+"_"+str(VerticesCount)+"VrtcNum"
-        final_arch_fc_nm = "NIFC_WFIGS_2023ToDate_QAQC_"+datetime
+            vtxoutput = "NIFC_WFIGS_2024ToDate_VerticiesCountOutput_"+datetime+"_"+str(VerticesCount)+"VrtcNum"
+        final_arch_fc_nm = "NIFC_WFIGS_2024ToDate_QAQC_"+datetime
     #If user wants to use the Wildland Fire Management Research, Development, and Application team's Interagency fire perimeter historical dataset
     if DownloadSelection == "RDA Team Interagency Fire Perimeter Historical Dataset":
         rawdata = (os.path.join(rawdatastoragegdb,"Raw_RDAFirePerimsHist_"+datetime))
@@ -244,12 +244,12 @@ if DownloadSelection == "Wildland Fire Perimeters (WFIGS) Full History":
         print("Error downloading and unzipping the Wildland Fire Perimeters. Exiting.")
         report_error()
         sys.exit()
-    #Download the CY2023 'To Date' Current Wildland Fire Data
-if DownloadSelection == "2023 Wildland Fire Perimeters (WFIGS) to Date":
+    #Download the CY2024 'To Date' Current Wildland Fire Data
+if DownloadSelection == "2024 Wildland Fire Perimeters (WFIGS) to Date":
     try:
-        print("Downloading 2023 Wildland Fire Perimeters (WFIGS) to Date...")
-        arcpy.AddMessage("Downloading 2023 Wildland Fire Perimeters (WFIGS) to Date")
-        temparchzip = os.path.join(scratchfolder,"NIFC_CY2023_Public_WildlandFirePerims_ToDate_gdb_"+datetime+".zip")
+        print("Downloading 2024 Wildland Fire Perimeters (WFIGS) to Date...")
+        arcpy.AddMessage("Downloading 2024 Wildland Fire Perimeters (WFIGS) to Date")
+        temparchzip = os.path.join(scratchfolder,"NIFC_CY2024_Public_WildlandFirePerims_ToDate_gdb_"+datetime+".zip")
         dwnld_unzip_filter(nifc_pbl_YTD_url,temparchzip,"Perimeters",webdwnld_fgdb)
         user_fire_perimeters = os.path.join(webdwnld_fgdb,"Perimeters")
         # Announce Completion and final feature class name:
