@@ -178,7 +178,7 @@ try:
             arcpy.management.AddField(Perimeters,"attr_FireMgmtComplexity","TEXT",None,None,None,"","NULLABLE","NON_REQUIRED","")
         lstFields = arcpy.ListFields(Perimeters)
         lstfieldNames = [f.name for f in lstFields]
-        if "GoedesicAcreage" in lstfieldNames:
+        if "GeodesicAcreage" in lstfieldNames:
             arcpy.management.DeleteField(Perimeters,"GeodesicAcreage","DELETE_FIELDS")
         arcpy.management.AddField(Perimeters,"GeodesicAcreage","DOUBLE",None,None,None,"","NULLABLE","NON_REQUIRED","")
         arcpy.management.CalculateGeometryAttributes(Perimeters,"GeodesicAcreage AREA_GEODESIC","","ACRES",None,"SAME_AS_INPUT")
