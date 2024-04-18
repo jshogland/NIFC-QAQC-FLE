@@ -73,7 +73,7 @@ try:
     
     #Format user provided Output Name to have datetime appended
     FLEngageOutput = "LineEngagement_"+FLEngageOutputName+"_"+datetime
-    IncidentName_BuffEnggmntLines_Datetime = "LineEngmntOvrly_"+FLEngageOutputName+"_"+(str(FirelineEngagmentBuffer))+"MtrBuff_"+datetime
+    IncidentName_BuffEnggmntLines_Datetime = "LineEngmntOvrly_"+FLEngageOutputName+"_"+(str(FirelineBuffer))+"MtrBuff_"+datetime
 
 
 except:
@@ -325,23 +325,24 @@ try:
     arcpy.management.CalculateField("Line_Merge_Layer2","LineTypeCodes","!LineTypeValue!","PYTHON3","","TEXT","NO_ENFORCE_DOMAINS")
     arcpy.management.MakeFeatureLayer("Line_Merge","Line_Merge_Layer3","EngagementValue IS NULL")
     arcpy.management.CalculateField(
-    in_table="Line_Merge_Layer3",
-    field="FirelineEgagement",
-    expression="Reclass(!MAX_EngagementValue!)",
-    expression_type="PYTHON3",
-    code_block="""def Reclass(MAX_EngagementValue):
-    if MAX_EngagementValue == 3:
-        return 'Held'
-    elif MAX_EngagementValue == 2:
-        return 'Not Engaged'
-    elif MAX_EngagementValue == 1:
-        return 'Not Held'
-    elif MAX_EngagementValue is None:
-        return 'error'
-    else: 
-        return 'error1'""",
-    field_type="TEXT",
-    enforce_domains="NO_ENFORCE_DOMAINS")
+        in_table="Line_Merge_Layer3",
+        field="FirelineEngagement",
+        expression="Reclass(!MAX_EngagementValue!)",
+        expression_type="PYTHON3",
+        code_block="""def Reclass(MAX_EngagementValue):
+        if MAX_EngagementValue == 3:
+            return 'Held'
+        elif MAX_EngagementValue == 2:
+            return 'Not Engaged'
+        elif MAX_EngagementValue == 1:
+            return 'Not Held'
+        elif MAX_EngagementValue is None:
+            return 'error'
+        else: 
+            return 'error1'""",
+        field_type="TEXT",
+        enforce_domains="NO_ENFORCE_DOMAINS"
+    )
     arcpy.management.CalculateField("Line_Merge_Layer3","EngagementValue","!MAX_EngagementValue!","PYTHON3","","TEXT","NO_ENFORCE_DOMAINS")
     arcpy.management.DeleteField("Line_Merge","CONCATENATE_FeatureCategory;CONCATENATE_LineTypeValue;FeatureCategory;LineTypeValue;MAX_EngagementValue","DELETE_FIELDS")
     # Prepare the final layers for output by calculating fields where necessary.
@@ -350,7 +351,7 @@ try:
     arcpy.management.CalculateField("FnlLyr","MAX_LineTypeValue","!LineTypeCodes!","PYTHON3","","TEXT","NO_ENFORCE_DOMAINS")
     arcpy.management.MakeFeatureLayer("Line_Merge","FnlLyr2","COUNT_ IS NULL")
     arcpy.management.CalculateField("FnlLyr2","COUNT_","1","PYTHON3","","TEXT","NO_ENFORCE_DOMAINS")
-    arcpy.analysis.PairwiseDissolve("Line_Merge",IncidentName_BuffEnggmntLines_Datetime,"COUNT_;MAX_LineTypeValue;SUM_LineTypeValue;LineType;LineTypeCodes;FirelineEgagement",None,"MULTI_PART","")
+    arcpy.analysis.PairwiseDissolve("Line_Merge",IncidentName_BuffEnggmntLines_Datetime,"COUNT_;MAX_LineTypeValue;SUM_LineTypeValue;LineType;LineTypeCodes;FirelineEngagement",None,"MULTI_PART","")
     fc_Delete = ["Line_Merge","Line_CntOvp_EngVluMx","Line_DissBuffErase_snglpt","Line_CntOvlp_snglpt","Firelines_Diss","Firelines_DissBuff_erase","Line_DissBuffIntUn_CntOvp","Line_DissBuffIntUnion","Line_DissBuffInt_diss","Line_DissBuffInt","Firelines_DissBuff","Line_CntOvp_Tbl","Line_CntOvp_Stats_MxVlu","Line_CntOvp_Stats_Sum","Line_CntOvp_Stats_Concat","Line_CntOvp_Stats_ValueConcat"]
     for fc in fc_Delete:
         fc_path = os.path.join(localoutputws, fc)
