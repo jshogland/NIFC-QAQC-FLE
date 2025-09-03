@@ -1,4 +1,8 @@
-import requests, geopandas as gpd, shapely, numpy as np, gdown, zipfile, os
+import requests, geopandas as gpd, pandas as pd, shapely, numpy as np, gdown, zipfile, os
+from scipy.spatial import KDTree
+from shapely import LineString
+from shapely.geometry import MultiPoint, LineString
+import numpy as np
 
 class FLE_QAQC:
     def __init__(self,fire_year=2018,min_vert=4,invalid_incident_names=['erase','test','none']):
@@ -35,7 +39,7 @@ class FLE_QAQC:
     
     @property
     def min_vert(self):
-        #the year of the fires you want to query
+        #the minimum number of vertices 
         return self._min_vert
     
     @min_vert.setter
@@ -44,7 +48,7 @@ class FLE_QAQC:
 
     @property
     def invalid_incident(self):
-        #the year of the fires you want to query
+        #list of invalid incident names
         return self._rinc
     
     @invalid_incident.setter
@@ -54,6 +58,7 @@ class FLE_QAQC:
     #Rest URLs
     @property
     def perimeters_urls(self):
+        # dictionary of urls for perimeters {(str) resource_type:(str) url,..}
         return self._perm_url
 
     @perimeters_urls.setter
@@ -62,6 +67,7 @@ class FLE_QAQC:
 
     @property
     def operations_urls(self):
+        # dictionary of urls for operational firelines {(int) year:(str) url,..}
         return self._opr_url
 
     @operations_urls.setter
@@ -195,9 +201,7 @@ class FLE_QAQC:
     def _remove_few_vertices_records(self, gdf):
         '''
         Remove geometries with too few vertices. Uses _min_vert attribute
-       
         gdf=input geodataframe
-        
         returns remaining rows geodataframe, removed rows geodataframe 
         '''
         crds=gdf.geometry.get_coordinates()
@@ -219,7 +223,7 @@ class FLE_QAQC:
         '''
         ch=gdf[fldnm].str.contains('|'.join(name_list),case=False)
         outgdf=gdf[~ch]
-        rgdf=gdf[~ch]
+        rgdf=gdf[ch]
         return outgdf,rgdf
     
     def _remove_identical_shapes(self, gdf):
@@ -291,12 +295,160 @@ class FLE_QAQC:
                 self._opr_event,plst=self._get_rest_data(o_url,geo,layer=flg,outsr='EPSG:4326')         
         
         return self._outperm,self._opr_event
-
     
+    def _redistribute_vertices(self,geom, distance):
+        if geom.geom_type == 'LineString':
+            num_vert = int(round(geom.length / distance))
+            if num_vert == 0:
+                num_vert = 1
+            return LineString([geom.interpolate(float(n) / num_vert, normalized=True) for n in range(num_vert + 1)])
+        
+        elif geom.geom_type == 'MultiLineString':
+            parts = [self._redistribute_vertices(part, distance) for part in geom.geoms]
+            return type(geom)([p for p in parts if not p.is_empty])
+        
+        else:
+            raise ValueError('unhandled geometry %s', (geom.geom_type,))
     
+    def _label_control(self,df,pgeo,perm_dist):
+        hbuff=pgeo.boundary.buffer(perm_dist)
+        bbuff=pgeo.difference(hbuff)
+        nbuff=bbuff.union(hbuff)
+        h_lines=df.clip(hbuff)
+        b_lines=df.clip(bbuff)
+        nbuff2=gpd.GeoSeries(nbuff,crs=df.crs)
+        n_lines=df.overlay(gpd.GeoDataFrame(geometry=nbuff2,crs=df.crs),how='difference')
+        h_lines['FirelineEngagement']='Held'
+        b_lines['FirelineEngagement']='Burnt Over'
+        n_lines['FirelineEngagement']='Not Engaged'
+        return pd.concat([h_lines,b_lines,n_lines])
+
+    def _get_metrics(self,df,pgeo):
+        df['length']=df.length
+        gr_df=df.groupby('FirelineEngagement').sum(['length'])
+        fperm=pgeo.length
+        farea=pgeo.area
+        TotalLine=df.length.sum()
+        out_dic={
+            'HTr':[gr_df[gr_df.index.str.contains('Held')]['length'].sum()/TotalLine],
+            'TR':[TotalLine/fperm],
+            'Er':[gr_df[gr_df.index.str.contains('Held|Burnt Over')]['length'].sum()/TotalLine],
+            'HER':[gr_df[gr_df.index.str.contains('Held')]['length'].sum()/gr_df[gr_df.index.str.contains('Held|Burnt Over')]['length'].sum()],
+            'BTR':[gr_df[gr_df.index.str.contains('Burnt Over')]['length'].sum()/TotalLine],
+            'NeTr':[gr_df[gr_df.index.str.contains('Not Engaged')]['length'].sum()/TotalLine],
+            'PrAr':[fperm/farea],
+        }
+        return out_dic
+
+    def _average_lines(self,fld_name='poly_IncidentName',perm_dist=50,line_dist=25):
+        '''
+        averages the geometry of firelines control events based on each unique incident
+        fld_name: (string) column name used to specify unique incidents.
+        perm_dist: (float) distance from fire perimeter used to select control events that held, burnt over, or did not engage with the fire
+        line_dist: (float) distance used to group control events into seperate actions
+
+        returns: updated firelines controls events dataframe, and fire perimeters with metrics
+        '''
+        opr_event=self._opr_event.to_crs('EPSG:5070')
+        outperm=self._outperm.to_crs('EPSG:5070')
+        outperm_lnk=outperm[['geometry',fld_name]].dissolve(fld_name)
+        opr_event_lnk=opr_event[opr_event.FeatureCategory.str.contains('complete',case=False)].sjoin(outperm_lnk)
+        opr_event_lnk.loc[opr_event_lnk.IncidentName.isna(),'IncidentName']=opr_event_lnk[fld_name]#assign IncidentName to any lines with a null IncidentName
+
+        #group operation lines within 50 meters and reduce polygon width to 10
+        
+        cnt_lns_lst=[]
+        perm_list=[]
+        #process by incident
+        for rw in outperm_lnk.itertuples():
+            fc_lst=[]
+            geo_lst=[]
+            id_lst=[]
+            id=rw[0]
+            pgeo=rw[1]
+            #process by Feature Category
+            for fc in opr_event_lnk.FeatureCategory.unique():
+                #subset by category and remove any records marked for deletion
+                lns_sub=opr_event_lnk[(opr_event_lnk.FeatureCategory==fc) & (opr_event_lnk.DeleteThis=='No') & (opr_event_lnk.IncidentName.str.contains(id,case=False))]
+                #buff each line segment and union them together, finally explode the unioned polygons
+                buffs= gpd.GeoSeries(lns_sub.buffer(line_dist).union_all(),crs=opr_event.crs).explode()
+                #for each polygon, clip all line segments within the buffer
+                for buff in buffs:
+                    lns=lns_sub.clip(buff)
+                    dlns=[]
+                    #for each line densify the line segments based on line_dist 
+                    for l in lns.geometry:
+                        dlns.append(self._redistribute_vertices(l,line_dist))
+                    
+                    #update the geometry to the densified lines
+                    lns.geometry=dlns
+                    #get all the vertices
+                    all_pnts=lns.get_coordinates()
+                    #find the longest line
+                    lns['meters']=lns.length
+                    lns_l = lns.sort_values('meters').iloc[-1:]
+                    #get the vertices of the longest line as the start point
+                    pnts=lns_l.get_coordinates()
+                    #create a KDTree from all points to select points within line_dist
+                    kdt=KDTree(all_pnts.values)
+                    #get all indicies for points within line_dist
+                    indxs=kdt.query_ball_point(pnts.values,r=line_dist)
+                    #average coordinate x and y values and 
+                    out_lst=[]
+                    for r in range(indxs.shape[0]):
+                        vls=kdt.data[indxs[r]]
+                        out_lst.append(np.mean(vls,axis=0))
+
+                    #recreate the line based on averaged coordinates
+                    pnt_df=pd.DataFrame(out_lst,columns=['x','y'])
+                    t=LineString(gpd.GeoSeries.from_xy(pnt_df.x,pnt_df.y))
+                    fc_lst.append(fc)
+                    geo_lst.append(t)
+                    id_lst.append(id)
+                    
+            #create the averaged control line events
+            
+            if(len(fc_lst)>0):
+                df=gpd.GeoDataFrame.from_dict({fld_name:id_lst,'FeatureCategory':fc_lst,'geometry':geo_lst},crs=opr_event.crs)
+                #split lines into held, burnt over, not engaged
+                df2=self._label_control(df,pgeo,perm_dist=perm_dist)
+                cnt_lns_lst.append(df2)
+                #calculate metrics
+                vls_dic=self._get_metrics(df2,pgeo)
+                vls_dic['IncidentName']=[id]
+                vls_dic['geometry']=[pgeo]
+                perm_list.append(gpd.GeoDataFrame.from_dict(vls_dic,geometry='geometry',crs=outperm.crs))
+            else:
+                df=gpd.GeoDataFrame.from_dict({fld_name:id_lst,'FeatureCategory':fc_lst,'FirelineEngagement':[],'geometry':geo_lst},crs=opr_event.crs)
+                cnt_lns_lst.append(df)
+                vls_dic={
+                    'HTr':[0],
+                    'TR':[0],
+                    'Er':[0],
+                    'HER':[0],
+                    'BTR':[0],
+                    'NeTr':[0],
+                    'PrAr':[0],
+                    'IncidentName':[id], 
+                    'geometry':[pgeo],
+                }
+                perm_list.append(gpd.GeoDataFrame.from_dict(vls_dic,geometry='geometry',crs=outperm.crs))
+
+        
+        return pd.concat(cnt_lns_lst),pd.concat(perm_list)
+    
+    def _assign_snap_dissolve(self,dist=10,fld_name='poly_IncidentName'):
+        opr_event=self._opr_event.to_crs('EPSG:5070')
+        outperm=self._outperm.to_crs('EPSG:5070')
+        outperm_lnk=outperm[['geometry',fld_name]].dissolve(fld_name)
+        opr_event_lnk=opr_event[opr_event.FeatureCategory.str.contains('complete',case=False)].sjoin(outperm_lnk)
+        opr_event_lnk.loc[opr_event_lnk.IncidentName.isna(),'IncidentName']=opr_event_lnk[fld_name]#assign IncidentName to any lines with a null IncidentName
+        opr_event_lnk.geometry=opr_event_lnk.geometry.set_precision(dist)
+        opr_event_lnk.IncidentName = opr_event_lnk.IncidentName.str.upper().str.strip()
+        return opr_event_lnk.dissolve(by=['IncidentName','FeatureCategory'])
 
 
 
-
-
+        
+        
 
